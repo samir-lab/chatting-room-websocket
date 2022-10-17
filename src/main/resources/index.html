@@ -218,9 +218,17 @@
         }
         .chat-box{
             width:100%;
-            height:100%;
+            height:40%;
             background-color: #080808;
             color: green;
+        }
+        .img-box{
+            width:100%;
+            height:calc(60% - 40px);
+            background-color: #080808;
+            color: green;
+            margin-bottom: 20px;
+            overflow: auto;
         }
         @media screen and (max-width: 1023px){
             /* 手机端CSS代码 */
@@ -254,26 +262,49 @@
 <body>
 <form onSubmit="return false;" class="chat-form">
     <textarea id="msg" disabled="disabled" class="chat-box"></textarea><br/>
+    <div class="img-box" id="imgBox"></div>
+    <input type="file" onchange="handleFiles(this.files)" />
     <input type="text" autocomplete="off" id="msg-input" name="message" placeholder="emmmm... ? .. !! => :-) " value="" /><br/>
     <input type="button" value="呱呱呱" class="btn btn-primary btn-block btn-large" onClick="send(this.form.message.value);this.form.message.value=''"/>
 </form>
 <script type="text/javascript">
     var socket;
-    if(!window.WebSocket){
+    var heartbeat_msg = '--heartbeat--', heartbeat_interval = null;
+    if (!window.WebSocket) {
         window.WebSocket = window.MozWebSocket;
     }
 
-    if(window.WebSocket){
-        socket = new WebSocket("ws://localhost:8888/websocket");
+    if (window.WebSocket) {
+        socket = new WebSocket("ws://47.111.130.42/websocket");
         socket.onmessage = function(event){
+            var txtVal = event.data
+
+            if(txtVal.indexOf('>> [IMG]') === 0){
+                imgData = event.data.replace('>> [IMG]', '');
+                document.getElementById("imgBox").innerHTML += "<img style='height:100%' src='"+imgData+"'>";
+                txtVal = '>> [IMG]如果图片太大，压缩下再发(囧)，服务器只有1M带宽～～。';
+            }
             var ta = document.getElementById('msg');
-            ta.value += event.data + "\r\n";
+            ta.value += txtVal + "\r\n";
             ta.scrollTop = ta.scrollHeight;
         };
 
         socket.onopen = function(event){
             var ta = document.getElementById('msg');
             ta.value = "连接已打开，请发言！\r\n";
+            // 心跳包
+            if (heartbeat_interval === null) {
+                heartbeat_interval = setInterval(function() {
+                    try {
+                        socket.send(heartbeat_msg);
+                    } catch(e) {
+                        clearInterval(heartbeat_interval);
+                        heartbeat_interval = null;
+                        console.warn("Closing connection. Reason: " + e.message);
+                        socket.close();
+                    }
+                }, 5000);
+            }
         };
 
         socket.onclose = function(event){
@@ -281,8 +312,26 @@
             ta.value = "";
             ta.value = "连接已关闭！\r\n";
         };
-    }else{
+    } else {
         alert("您的浏览器太破了，赶紧升级吧~");
+    }
+
+    function handleFiles(files) {
+        var base64 = ""
+        if (files.length) {
+            let file = files[0];
+            let reader = new FileReader();
+            reader.onload = function () {
+                base64 = this.result;
+                console.log(file.size)
+                if(file.size > 50243){
+                    // alert("图片太大了，压缩下再发(囧)，服务器只有1M带宽～～。")
+                    // return;
+                }
+                socket.send("[IMG]" + base64)
+            };
+            reader.readAsDataURL(file);
+        }
     }
 
     function send(message){
